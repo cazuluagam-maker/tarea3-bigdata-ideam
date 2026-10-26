@@ -1,0 +1,5 @@
+# pyspark ya viene con la instalación de Spark de la VM (Anexo 2).
+# Si "python3 tarea3_batch_ideam.py" dice que no encuentra pyspark: pip install pyspark==3.5.*
+kafka-python
+matplotlib
+pandas

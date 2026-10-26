@@ -1,0 +1,64 @@
+PASO A PASO EN LA MÁQUINA VIRTUAL – TAREA 3 (Carlos Zuluaga, Grupo 106)
+=========================================================================
+Dataset: Temperatura Ambiente del Aire - IDEAM (datos.gov.co, id sbwg-7ju4)
+Graba la pantalla mientras ejecutas los pasos B y C (sirven para el video).
+
+A. PREPARACIÓN (una sola vez)
+-----------------------------
+1. Inicia la VM en VirtualBox y conéctate por PuTTY con la IP de la VM
+   (usuario vboxuser / contraseña bigdata).
+2. Instala las librerías de Python:
+      pip install kafka-python matplotlib pandas
+3. Copia a la VM los 3 archivos .py (con WinSCP, o con "nano archivo.py" y pegando el código):
+      tarea3_batch_ideam.py
+      kafka_producer_ideam.py
+      spark_streaming_consumer_ideam.py
+
+B. PROCESAMIENTO EN BATCH
+-------------------------
+4. Inicia Hadoop como el usuario hadoop (igual que en la Tarea 2):
+      su - hadoop
+      start-all.sh
+5. Descarga el dataset desde la fuente original (año 2024; puede tardar varios minutos):
+      wget -O temperatura_ideam.csv "https://www.datos.gov.co/resource/sbwg-7ju4.csv?\$where=fechaobservacion%20between%20'2024-01-01T00:00:00'%20and%20'2024-12-31T23:59:59'&\$limit=1000000"
+   Si es muy lento o la VM se queda sin memoria, cambia $limit=1000000 por $limit=500000.
+   Revisa el archivo:
+      wc -l temperatura_ideam.csv
+      head -3 temperatura_ideam.csv
+6. Sube el archivo a HDFS:
+      hdfs dfs -mkdir -p /Tarea3
+      hdfs dfs -put -f temperatura_ideam.csv /Tarea3/
+      hdfs dfs -ls /Tarea3
+7. En otra sesión de PuTTY como vboxuser, ejecuta el análisis:
+      python3 tarea3_batch_ideam.py
+   Al terminar se crean la carpeta ./graficas con 4 imágenes PNG y los resultados en
+   HDFS (/Tarea3/resultados). Revísalos en el navegador: http://IP_DE_LA_VM:9870
+8. Pasa las gráficas a Windows (WinSCP) para el informe y la presentación.
+
+C. PROCESAMIENTO EN TIEMPO REAL (Anexo 3 con el dataset propio)
+---------------------------------------------------------------
+9.  Si Kafka aún no está instalado, haz los pasos del Anexo 3 (wget, tar, mv a /opt/Kafka).
+10. Inicia ZooKeeper y Kafka (Enter después de cada uno):
+      sudo /opt/Kafka/bin/zookeeper-server-start.sh /opt/Kafka/config/zookeeper.properties &
+      sudo /opt/Kafka/bin/kafka-server-start.sh /opt/Kafka/config/server.properties &
+11. Crea el topic:
+      /opt/Kafka/bin/kafka-topics.sh --create --bootstrap-server localhost:9092 --replication-factor 1 --partitions 3 --topic temperatura_ideam
+      /opt/Kafka/bin/kafka-topics.sh --describe --bootstrap-server localhost:9092 --topic temperatura_ideam
+12. Terminal 1 (productor):
+      python3 kafka_producer_ideam.py
+13. Terminal 2 (nueva sesión de PuTTY), consumidor:
+      spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3 spark_streaming_consumer_ideam.py
+    Espera 1 o 2 minutos para que se llenen las ventanas. Cada 10 s aparecen dos tablas:
+      - estadísticas por minuto y departamento (lecturas, promedio, mínima, máxima, alertas)
+      - alertas en vivo: CALOR EXTREMO / FALLA DE SENSOR
+14. Abre http://IP_DE_LA_VM:4040 y muestra las pestañas Jobs, Stages, Structured Streaming y Executors.
+15. Para terminar, Ctrl + C en ambas terminales.
+
+PROBLEMAS COMUNES
+-----------------
+- "Connection refused localhost:9092": Kafka no está iniciado (paso 10).
+- "ModuleNotFoundError: kafka": pip install kafka-python
+- El consumidor no muestra nada: el productor debe estar enviando datos. El consumidor
+  lee desde los mensajes nuevos (startingOffsets=latest).
+- Si al descargar la versión 3.5.3 del paquete de Kafka para Spark hay error, usa la misma
+  versión de tu Spark (spark-submit --version), p. ej. ...kafka-0-10_2.12:3.5.8
